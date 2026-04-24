@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5
+
+- Switch the fork to source-only GitHub dependency distribution
+- Add package-version based GitHub release tagging
+- Remove npm/dist publish artifacts and placeholder React export
+
 ## 0.1.4
 
 - Fix subscription quantity updates outside component actions

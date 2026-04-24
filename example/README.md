@@ -235,12 +235,9 @@ React app with four pages:
 2. Check Convex logs for webhook processing errors
 3. Verify `STRIPE_SECRET_KEY` is set
 
-### Build errors
+### Codegen errors
 
 ```bash
-# Rebuild the component
-bun run build
-
 # Re-sync Convex
 bunx convex dev --once
 ```

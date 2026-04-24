@@ -1,0 +1,67 @@
+name: Release tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    name: Tag package version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Read versions
+        id: versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          current_version="$(jq -r '.version' package.json)"
+          previous_version="$(git show "${{ github.event.before }}:package.json" 2>/dev/null | jq -r '.version // empty' || true)"
+
+          echo "current=${current_version}" >> "$GITHUB_OUTPUT"
+          echo "previous=${previous_version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${current_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create immutable version tag
+        if:
+          ${{ steps.versions.outputs.current != steps.versions.outputs.previous
+          }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.versions.outputs.tag }}"
+          current="${{ steps.versions.outputs.current }}"
+          previous="${{ steps.versions.outputs.previous }}"
+
+          if [[ ! "${current}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "package.json version must be semver-like, got ${current}."
+            exit 1
+          fi
+
+          if [[ -n "${previous}" && "$(printf '%s\n%s\n' "${previous}" "${current}" | sort -V | tail -n1)" != "${current}" ]]; then
+            echo "package.json version must increase: ${previous} -> ${current}."
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; refusing to move it."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${tag}" -m "${tag}" "${{ github.sha }}"
+          git push origin "${tag}"

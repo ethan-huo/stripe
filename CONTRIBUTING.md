@@ -11,8 +11,7 @@ bun run dev
 
 ```sh
 bun install --frozen-lockfile
-bun run build:clean
+bun run test
 bun run typecheck
 bun run lint
-bun run test
 ```

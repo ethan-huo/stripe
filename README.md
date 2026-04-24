@@ -5,8 +5,6 @@
 A Convex component for integrating Stripe payments, subscriptions, and billing
 into your Convex application.
 
-[![npm version](https://badge.fury.io/js/@convex-dev%2Fstripe.svg)](https://badge.fury.io/js/@convex-dev%2Fstripe)
-
 ## Features
 
 - 🛒 **Checkout Sessions** - Create one-time payment and subscription checkouts
@@ -25,8 +23,12 @@ into your Convex application.
 ### 1. Install the Component
 
 ```bash
-bun add @convex-dev/stripe
+bun add @convex-dev/stripe@github:ethan-huo/stripe#v0.1.5
 ```
+
+This fork is distributed as a source-only GitHub dependency. Version tags are
+created from `package.json` changes on `main`; there is no npm publish or `dist`
+build artifact.
 
 ### 2. Add to Your Convex App
 

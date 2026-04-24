@@ -23,13 +23,10 @@ jobs:
         with:
           bun-version: "1.3.13"
 
-      - name: Install and build
+      - name: Install
         run: |
           bun install --frozen-lockfile
-          bun run build
-      - name: Publish package for testing branch
-        run: |
-          bunx pkg-pr-new publish || echo "Have you set up pkg-pr-new for this repo?"
+
       - name: Test
         run: |
           bun run test

@@ -15,13 +15,7 @@
     "module": "Node16",
     "moduleResolution": "NodeNext",
 
-    "composite": true,
     "isolatedModules": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "rootDir": "./src",
-    "outDir": "./dist",
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
