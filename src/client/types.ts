@@ -72,6 +72,16 @@ export type RegisterRoutesConfig = {
    * Defaults to process.env.STRIPE_SECRET_KEY
    */
   STRIPE_SECRET_KEY?: string;
+
+  /**
+   * Optional Stripe SDK config, e.g. { apiVersion: "2025-10-29.clover" }.
+   */
+  stripeConfig?: Omit<
+    NonNullable<ConstructorParameters<typeof Stripe>[1]>,
+    "apiVersion"
+  > & {
+    apiVersion?: string | null;
+  };
 };
 
 /**

@@ -156,7 +156,8 @@ export const handleSubscriptionCreated = mutation({
     const orgId = metadata.orgId as string | undefined;
     const userId = metadata.userId as string | undefined;
 
-    const cancelAtPeriodEnd = args.cancelAtPeriodEnd || 
+    const cancelAtPeriodEnd =
+      args.cancelAtPeriodEnd ||
       deriveCancelAtPeriodEnd(args.cancelAt, args.currentPeriodEnd);
 
     if (!existing) {
@@ -202,6 +203,7 @@ export const handleSubscriptionCreated = mutation({
 export const handleSubscriptionUpdated = mutation({
   args: {
     stripeSubscriptionId: v.string(),
+    stripeCustomerId: v.optional(v.string()),
     status: v.string(),
     currentPeriodEnd: v.number(),
     cancelAtPeriodEnd: v.boolean(),
@@ -219,15 +221,14 @@ export const handleSubscriptionUpdated = mutation({
       )
       .unique();
 
+    const metadata = args.metadata || {};
+    const orgId = metadata.orgId as string | undefined;
+    const userId = metadata.userId as string | undefined;
+    const cancelAtPeriodEnd =
+      args.cancelAtPeriodEnd ||
+      deriveCancelAtPeriodEnd(args.cancelAt, args.currentPeriodEnd);
+
     if (subscription) {
-      // Extract orgId and userId from metadata if present
-      const metadata = args.metadata || {};
-      const orgId = metadata.orgId as string | undefined;
-      const userId = metadata.userId as string | undefined;
-
-      const cancelAtPeriodEnd = args.cancelAtPeriodEnd || 
-        deriveCancelAtPeriodEnd(args.cancelAt, args.currentPeriodEnd);
-
       await ctx.db.patch(subscription._id, {
         status: args.status,
         currentPeriodEnd: args.currentPeriodEnd,
@@ -239,6 +240,20 @@ export const handleSubscriptionUpdated = mutation({
         ...(args.metadata !== undefined && { metadata }),
         ...(orgId !== undefined && { orgId }),
         ...(userId !== undefined && { userId }),
+      });
+    } else if (args.stripeCustomerId && args.priceId) {
+      await ctx.db.insert("subscriptions", {
+        stripeSubscriptionId: args.stripeSubscriptionId,
+        stripeCustomerId: args.stripeCustomerId,
+        status: args.status,
+        currentPeriodEnd: args.currentPeriodEnd,
+        cancelAtPeriodEnd,
+        cancelAt: args.cancelAt ?? undefined,
+        quantity: args.quantity,
+        priceId: args.priceId,
+        metadata,
+        orgId,
+        userId,
       });
     }
 
@@ -273,6 +288,27 @@ export const handleSubscriptionDeleted = mutation({
         }),
         ...(args.cancelAt !== undefined && { cancelAt: args.cancelAt }),
       });
+    }
+
+    return null;
+  },
+});
+
+export const handleCustomerDeleted = mutation({
+  args: {
+    stripeCustomerId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_stripe_customer_id", (q) =>
+        q.eq("stripeCustomerId", args.stripeCustomerId),
+      )
+      .unique();
+
+    if (customer) {
+      await ctx.db.delete(customer._id);
     }
 
     return null;
@@ -323,6 +359,7 @@ export const handleInvoiceCreated = mutation({
     amountDue: v.number(),
     amountPaid: v.number(),
     created: v.number(),
+    metadata: v.optional(v.any()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -333,25 +370,38 @@ export const handleInvoiceCreated = mutation({
       )
       .unique();
 
-    if (!existing) {
-      // Look up orgId/userId from the subscription if available
-      let orgId: string | undefined;
-      let userId: string | undefined;
+    const metadata = args.metadata || {};
+    let orgId = metadata.orgId as string | undefined;
+    let userId = metadata.userId as string | undefined;
 
-      if (args.stripeSubscriptionId) {
-        const subscription = await ctx.db
-          .query("subscriptions")
-          .withIndex("by_stripe_subscription_id", (q) =>
-            q.eq("stripeSubscriptionId", args.stripeSubscriptionId!),
-          )
-          .unique();
+    if ((!orgId || !userId) && args.stripeSubscriptionId) {
+      const subscription = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_stripe_subscription_id", (q) =>
+          q.eq("stripeSubscriptionId", args.stripeSubscriptionId!),
+        )
+        .unique();
 
-        if (subscription) {
-          orgId = subscription.orgId;
-          userId = subscription.userId;
-        }
+      if (subscription) {
+        orgId = orgId ?? subscription.orgId;
+        userId = userId ?? subscription.userId;
       }
+    }
 
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        stripeCustomerId: args.stripeCustomerId,
+        status: args.status,
+        amountDue: args.amountDue,
+        amountPaid: args.amountPaid,
+        created: args.created,
+        ...(args.stripeSubscriptionId !== undefined && {
+          stripeSubscriptionId: args.stripeSubscriptionId,
+        }),
+        ...(orgId && !existing.orgId && { orgId }),
+        ...(userId && !existing.userId && { userId }),
+      });
+    } else {
       await ctx.db.insert("invoices", {
         stripeInvoiceId: args.stripeInvoiceId,
         stripeCustomerId: args.stripeCustomerId,

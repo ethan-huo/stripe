@@ -25,7 +25,7 @@ into your Convex application.
 ### 1. Install the Component
 
 ```bash
-npm install @convex-dev/stripe
+bun add @convex-dev/stripe
 ```
 
 ### 2. Add to Your Convex App
@@ -44,7 +44,8 @@ export default app;
 
 ### 3. Set Up Environment Variables
 
-Add these to your [Convex Dashboard](https://dashboard.convex.dev) → Settings → Environment Variables:
+Add these to your [Convex Dashboard](https://dashboard.convex.dev) → Settings →
+Environment Variables:
 
 | Variable                | Description                                             |
 | ----------------------- | ------------------------------------------------------- |
@@ -53,17 +54,20 @@ Add these to your [Convex Dashboard](https://dashboard.convex.dev) → Settings 
 
 ### 4. Configure Stripe Webhooks
 
-1. Go to [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/test/webhooks)
+1. Go to
+   [Stripe Dashboard → Developers → Webhooks](https://dashboard.stripe.com/test/webhooks)
 2. Click **"Add endpoint"**
 3. Enter your webhook URL:
    ```
    https://<your-convex-deployment>.convex.site/stripe/webhook
    ```
-   (Find your deployment name in the Convex dashboard - it's the part before `.convex.cloud` in your URL)
+   (Find your deployment name in the Convex dashboard - it's the part before
+   `.convex.cloud` in your URL)
 4. Select these events:
    - `checkout.session.completed`
    - `customer.created`
    - `customer.updated`
+   - `customer.deleted`
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
@@ -175,34 +179,40 @@ import { StripeSubscriptions } from "@convex-dev/stripe";
 
 const stripeClient = new StripeSubscriptions(components.stripe, {
   STRIPE_SECRET_KEY: "sk_...", // Optional, defaults to process.env.STRIPE_SECRET_KEY
+  stripeConfig: { apiVersion: "2025-10-29.clover" }, // Optional Stripe SDK config
 });
 ```
 
 #### Methods
 
-| Method | Description |
-|--------|-------------|
-| `createCheckoutSession()` | Create a Stripe Checkout session |
-| `createCustomerPortalSession()` | Generate a Customer Portal URL |
-| `createCustomer()` | Create a new Stripe customer |
-| `getOrCreateCustomer()` | Get existing or create new customer |
-| `cancelSubscription()` | Cancel a subscription |
-| `reactivateSubscription()` | Reactivate a subscription set to cancel |
-| `updateSubscriptionQuantity()` | Update seat count |
+| Method                          | Description                             |
+| ------------------------------- | --------------------------------------- |
+| `createCheckoutSession()`       | Create a Stripe Checkout session        |
+| `createCustomerPortalSession()` | Generate a Customer Portal URL          |
+| `createCustomer()`              | Create a new Stripe customer            |
+| `getOrCreateCustomer()`         | Get existing or create new customer     |
+| `cancelSubscription()`          | Cancel a subscription                   |
+| `reactivateSubscription()`      | Reactivate a subscription set to cancel |
+| `updateSubscriptionQuantity()`  | Update seat count                       |
 
 ### createCheckoutSession
 
 ```typescript
 await stripeClient.createCheckoutSession(ctx, {
   priceId: "price_...",
-  customerId: "cus_...",           // Optional
-  mode: "subscription",             // "subscription" | "payment" | "setup"
+  customerId: "cus_...", // Optional
+  mode: "subscription", // "subscription" | "payment" | "setup"
   successUrl: "https://...",
   cancelUrl: "https://...",
-  quantity: 1,                      // Optional, default 1
-  metadata: {},                     // Optional, session metadata
-  subscriptionMetadata: {},         // Optional, attached to subscription
-  paymentIntentMetadata: {},        // Optional, attached to payment intent
+  quantity: 1, // Optional, default 1
+  metadata: {}, // Optional, session metadata
+  subscriptionMetadata: {}, // Optional, attached to subscription
+  paymentIntentMetadata: {}, // Optional, attached to payment intent
+  additionalParams: {
+    // Optional Stripe Checkout params
+    allow_promotion_codes: true,
+    automatic_tax: { enabled: true },
+  },
 });
 ```
 
@@ -291,9 +301,16 @@ const http = httpRouter();
 
 registerRoutes(http, components.stripe, {
   events: {
-    "customer.subscription.updated": async (ctx, event: Stripe.CustomerSubscriptionUpdatedEvent) => {
+    "customer.subscription.updated": async (
+      ctx,
+      event: Stripe.CustomerSubscriptionUpdatedEvent,
+    ) => {
       const subscription = event.data.object;
-      console.log("Subscription updated:", subscription.id, subscription.status);
+      console.log(
+        "Subscription updated:",
+        subscription.id,
+        subscription.status,
+      );
       // Add custom logic here
     },
   },
@@ -379,8 +396,8 @@ Check out the full example app in the [`example/`](./example) directory:
 ```bash
 git clone https://github.com/get-convex/convex-stripe
 cd convex-stripe
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 The example includes:
@@ -429,7 +446,7 @@ Make sure you've:
 Ensure your auth provider is configured:
 
 1. Create `convex/auth.config.ts` with your provider
-2. Run `npx convex dev` to push the config
+2. Run `bunx convex dev` to push the config
 3. Verify the user is signed in before calling actions
 
 ### Webhooks returning 400/500

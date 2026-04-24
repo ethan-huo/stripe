@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { expect, test } from "vitest";
-import { api, internal } from "./_generated/api.js";
+import { api } from "./_generated/api.js";
 import schema from "./schema.js";
 import { modules } from "./setup.test.js";
 
@@ -54,6 +54,27 @@ test("customer update", async () => {
   expect(customer?.email).toBe("new@example.com");
   expect(customer?.name).toBe("New Name");
   expect(customer?.metadata).toEqual({ updated: true });
+});
+
+test("customer deletion via webhook removes stored customer PII", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.private.handleCustomerCreated, {
+    stripeCustomerId: "cus_deleted",
+    email: "delete-me@example.com",
+    name: "Delete Me",
+    metadata: { userId: "user_delete" },
+  });
+
+  await t.mutation(api.private.handleCustomerDeleted, {
+    stripeCustomerId: "cus_deleted",
+  });
+
+  const customer = await t.query(api.public.getCustomer, {
+    stripeCustomerId: "cus_deleted",
+  });
+
+  expect(customer).toBeNull();
 });
 
 test("subscription creation via webhook", async () => {
@@ -123,8 +144,12 @@ test("list subscriptions for customer", async () => {
   });
 
   expect(subscriptions).toHaveLength(2);
-  expect(subscriptions.map((s: any) => s.stripeSubscriptionId)).toContain("sub_1");
-  expect(subscriptions.map((s: any) => s.stripeSubscriptionId)).toContain("sub_2");
+  expect(subscriptions.map((s: any) => s.stripeSubscriptionId)).toContain(
+    "sub_1",
+  );
+  expect(subscriptions.map((s: any) => s.stripeSubscriptionId)).toContain(
+    "sub_2",
+  );
 });
 
 test("update subscription metadata for custom lookups", async () => {
@@ -189,6 +214,29 @@ test("subscription status update via webhook", async () => {
   });
 
   expect(subscription?.status).toBe("past_due");
+});
+
+test("subscription update upserts when created event arrives out of order", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.private.handleSubscriptionUpdated, {
+    stripeSubscriptionId: "sub_out_of_order",
+    stripeCustomerId: "cus_test",
+    status: "active",
+    currentPeriodEnd: Date.now(),
+    cancelAtPeriodEnd: false,
+    quantity: 3,
+    priceId: "price_test",
+    metadata: { orgId: "org_test", userId: "user_test" },
+  });
+
+  const subscription = await t.query(api.public.getSubscription, {
+    stripeSubscriptionId: "sub_out_of_order",
+  });
+
+  expect(subscription?.stripeCustomerId).toBe("cus_test");
+  expect(subscription?.orgId).toBe("org_test");
+  expect(subscription?.userId).toBe("user_test");
 });
 
 test("subscription plan change updates priceId", async () => {
@@ -403,8 +451,12 @@ test("list payments by customer ID", async () => {
   });
 
   expect(payments).toHaveLength(2);
-  expect(payments?.map((p: any) => p.stripePaymentIntentId)).toContain("pi_cust1");
-  expect(payments?.map((p: any) => p.stripePaymentIntentId)).toContain("pi_cust2");
+  expect(payments?.map((p: any) => p.stripePaymentIntentId)).toContain(
+    "pi_cust1",
+  );
+  expect(payments?.map((p: any) => p.stripePaymentIntentId)).toContain(
+    "pi_cust2",
+  );
 });
 
 test("list payments by user ID", async () => {
@@ -447,7 +499,9 @@ test("list payments by user ID", async () => {
   });
 
   expect(alicePayments).toHaveLength(2);
-  expect(alicePayments?.every((p: any) => p.userId === "user_alice")).toBe(true);
+  expect(alicePayments?.every((p: any) => p.userId === "user_alice")).toBe(
+    true,
+  );
 });
 
 test("list payments by org ID", async () => {
@@ -588,3 +642,65 @@ test("handlePaymentIntentSucceeded updates existing payment with customer", asyn
   expect(payment?.stripeCustomerId).toBe("cus_idempotent");
 });
 
+test("invoice metadata supplies orgId and userId without subscription", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.private.handleInvoiceCreated, {
+    stripeInvoiceId: "in_metadata",
+    stripeCustomerId: "cus_invoice",
+    status: "open",
+    amountDue: 5000,
+    amountPaid: 0,
+    created: Date.now(),
+    metadata: { orgId: "org_invoice", userId: "user_invoice" },
+  });
+
+  const invoices = await t.query(api.public.listInvoicesByOrgId, {
+    orgId: "org_invoice",
+  });
+
+  expect(invoices).toHaveLength(1);
+  expect(invoices[0].userId).toBe("user_invoice");
+});
+
+test("invoice creation is idempotent and backfills subscription metadata", async () => {
+  const t = convexTest(schema, modules);
+
+  await t.mutation(api.private.handleInvoiceCreated, {
+    stripeInvoiceId: "in_upsert",
+    stripeCustomerId: "cus_invoice",
+    status: "draft",
+    amountDue: 1000,
+    amountPaid: 0,
+    created: 1,
+  });
+
+  await t.mutation(api.private.handleSubscriptionCreated, {
+    stripeSubscriptionId: "sub_invoice",
+    stripeCustomerId: "cus_invoice",
+    status: "active",
+    currentPeriodEnd: Date.now(),
+    cancelAtPeriodEnd: false,
+    priceId: "price_test",
+    metadata: { orgId: "org_from_sub", userId: "user_from_sub" },
+  });
+
+  await t.mutation(api.private.handleInvoiceCreated, {
+    stripeInvoiceId: "in_upsert",
+    stripeCustomerId: "cus_invoice",
+    stripeSubscriptionId: "sub_invoice",
+    status: "paid",
+    amountDue: 1000,
+    amountPaid: 1000,
+    created: 2,
+  });
+
+  const invoices = await t.query(api.public.listInvoicesByUserId, {
+    userId: "user_from_sub",
+  });
+
+  expect(invoices).toHaveLength(1);
+  expect(invoices[0].status).toBe("paid");
+  expect(invoices[0].amountPaid).toBe(1000);
+  expect(invoices[0].stripeSubscriptionId).toBe("sub_invoice");
+});

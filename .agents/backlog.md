@@ -1,0 +1,2 @@
+- Regenerate `src/component/_generated/*` with `bunx convex codegen --component-dir ./src/component` once this fork has a real `CONVEX_DEPLOYMENT`; this run had to sync `component.ts` manually because Convex codegen refuses to run without deployment configuration.
+- Evaluate upstream PR #6 product/price syncing as a separate feature: it adds broad schema/API surface and has unresolved account-boundary discussion, so it was intentionally not folded into the bugfix/dependency maintenance pass.

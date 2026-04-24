@@ -892,11 +892,11 @@ function ProfilePage({
 // ============================================================================
 
 function TeamBillingPage({
-  setCurrentPage,
+  setCurrentPage: _setCurrentPage,
 }: {
   setCurrentPage: (page: Page) => void;
 }) {
-  const { isSignedIn, user } = useUser();
+  const { isSignedIn, user: _user } = useUser();
   const [orgId, setOrgId] = useState("demo-org-123");
 
   // Using the org-based queries

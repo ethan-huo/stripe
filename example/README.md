@@ -1,7 +1,7 @@
 # Benji's Store - Example App
 
-A complete example app demonstrating the `@convex-dev/stripe` component with Clerk
-authentication.
+A complete example app demonstrating the `@convex-dev/stripe` component with
+Clerk authentication.
 
 ![Benji's Store Screenshot](https://via.placeholder.com/800x400?text=Benji%27s+Store)
 
@@ -30,7 +30,7 @@ authentication.
 ```bash
 git clone https://github.com/get-convex/convex-stripe
 cd convex-stripe
-npm install
+bun install
 ```
 
 ### 2. Configure Clerk
@@ -74,7 +74,7 @@ VITE_STRIPE_SUBSCRIPTION_PRICE_ID=price_...
 1. Start the development server (this will prompt you to set up Convex):
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 2. Add environment variables in [Convex Dashboard](https://dashboard.convex.dev)
@@ -102,7 +102,7 @@ export default {
 4. Push the auth config:
 
 ```bash
-npx convex dev --once
+bunx convex dev --once
 ```
 
 ### 5. Configure Stripe Webhooks
@@ -149,7 +149,7 @@ npx convex dev --once
 ### 6. Run the App
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173)
@@ -220,7 +220,7 @@ React app with four pages:
 
 1. Make sure Clerk is configured in `.env.local`
 2. Create `convex/auth.config.ts` with your Clerk domain
-3. Run `npx convex dev --once` to push the config
+3. Run `bunx convex dev --once` to push the config
 
 ### Webhooks not working
 
@@ -239,10 +239,10 @@ React app with four pages:
 
 ```bash
 # Rebuild the component
-npm run build
+bun run build
 
 # Re-sync Convex
-npx convex dev --once
+bunx convex dev --once
 ```
 
 ## Learn More

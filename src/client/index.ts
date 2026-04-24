@@ -9,6 +9,13 @@ import type {
 } from "./types.js";
 import type { ComponentApi } from "../component/_generated/component.js";
 
+type StripeConfig = Omit<
+  NonNullable<ConstructorParameters<typeof StripeSDK>[1]>,
+  "apiVersion"
+> & {
+  apiVersion?: string | null;
+};
+
 /**
  * Time window (in seconds) to check for recent subscriptions when processing
  * payment_intent.succeeded events. This helps avoid creating duplicate payment
@@ -28,19 +35,31 @@ export type { RegisterRoutesConfig, StripeEventHandlers };
  */
 export class StripeSubscriptions {
   private _apiKey: string;
+  private _stripeConfig?: StripeConfig;
   constructor(
     public component: StripeComponent,
     options?: {
       STRIPE_SECRET_KEY?: string;
+      stripeConfig?: StripeConfig;
     },
   ) {
     this._apiKey = options?.STRIPE_SECRET_KEY ?? process.env.STRIPE_SECRET_KEY!;
+    this._stripeConfig = options?.stripeConfig;
   }
   get apiKey() {
     if (!this._apiKey) {
       throw new Error("STRIPE_SECRET_KEY environment variable is not set");
     }
     return this._apiKey;
+  }
+
+  getStripe() {
+    // stripe-node accepts pinned historical API versions at runtime, but its
+    // TypeScript config narrows apiVersion to the SDK's latest version.
+    return new StripeSDK(
+      this.apiKey,
+      this._stripeConfig as ConstructorParameters<typeof StripeSDK>[1],
+    );
   }
 
   /**
@@ -54,7 +73,7 @@ export class StripeSubscriptions {
       quantity: number;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
     const subscription = await stripe.subscriptions.retrieve(
       args.stripeSubscriptionId,
     );
@@ -67,10 +86,13 @@ export class StripeSubscriptions {
       quantity: args.quantity,
     });
 
-    await ctx.runMutation(this.component.private.updateSubscriptionQuantityInternal, {
-      stripeSubscriptionId: args.stripeSubscriptionId,
-      quantity: args.quantity,
-    });
+    await ctx.runMutation(
+      this.component.private.updateSubscriptionQuantityInternal,
+      {
+        stripeSubscriptionId: args.stripeSubscriptionId,
+        quantity: args.quantity,
+      },
+    );
 
     return null;
   }
@@ -86,7 +108,7 @@ export class StripeSubscriptions {
       cancelAtPeriodEnd?: boolean;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
     const cancelAtPeriodEnd = args.cancelAtPeriodEnd ?? true;
 
     let subscription: StripeSDK.Subscription;
@@ -130,7 +152,7 @@ export class StripeSubscriptions {
       stripeSubscriptionId: string;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
 
     // Reactivate by setting cancel_at_period_end to false
     const subscription = await stripe.subscriptions.update(
@@ -177,9 +199,14 @@ export class StripeSubscriptions {
       subscriptionMetadata?: Record<string, string>;
       /** Metadata to attach to the payment intent (only for mode: "payment") */
       paymentIntentMetadata?: Record<string, string>;
+      /**
+       * Additional Stripe Checkout params for newer or product-specific fields.
+       * These are applied last so the wrapper does not lag Stripe's API surface.
+       */
+      additionalParams?: Partial<StripeSDK.Checkout.SessionCreateParams>;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
 
     const sessionParams: StripeSDK.Checkout.SessionCreateParams = {
       mode: args.mode,
@@ -212,7 +239,10 @@ export class StripeSubscriptions {
       };
     }
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    const session = await stripe.checkout.sessions.create({
+      ...sessionParams,
+      ...args.additionalParams,
+    });
 
     return {
       sessionId: session.id,
@@ -236,7 +266,7 @@ export class StripeSubscriptions {
       idempotencyKey?: string;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
 
     // Use idempotency key to prevent duplicate customers from race conditions
     const requestOptions = args.idempotencyKey
@@ -344,7 +374,7 @@ export class StripeSubscriptions {
       returnUrl: string;
     },
   ) {
-    const stripe = new StripeSDK(this.apiKey);
+    const stripe = this.getStripe();
 
     const session = await stripe.billingPortal.sessions.create({
       customer: args.customerId,
@@ -425,7 +455,10 @@ export function registerRoutes(
         });
       }
 
-      const stripe = new StripeSDK(apiKey);
+      const stripe = new StripeSDK(
+        apiKey,
+        config?.stripeConfig as ConstructorParameters<typeof StripeSDK>[1],
+      );
 
       // Verify webhook signature
       let event: StripeSDK.Event;
@@ -501,6 +534,14 @@ async function processEvent(
       break;
     }
 
+    case "customer.deleted": {
+      const customer = event.data.object as StripeSDK.Customer;
+      await ctx.runMutation(component.private.handleCustomerDeleted, {
+        stripeCustomerId: customer.id,
+      });
+      break;
+    }
+
     case "customer.subscription.created": {
       const subscription = event.data.object as StripeSDK.Subscription;
       const item = subscription.items.data[0];
@@ -532,6 +573,7 @@ async function processEvent(
         quantity: subscription.items.data[0]?.quantity ?? 1,
         priceId: item?.price?.id || undefined,
         metadata: subscription.metadata || {},
+        stripeCustomerId: subscription.customer as string,
       });
       break;
     }
@@ -589,6 +631,7 @@ async function processEvent(
               amountDue: invoice.amount_due,
               amountPaid: invoice.amount_paid,
               created: invoice.created,
+              metadata: invoice.metadata || {},
             });
           }
         } catch (err) {
@@ -611,13 +654,26 @@ async function processEvent(
         amountDue: invoice.amount_due,
         amountPaid: invoice.amount_paid,
         created: invoice.created,
+        metadata: invoice.metadata || {},
       });
       break;
     }
 
     case "invoice.paid":
     case "invoice.payment_succeeded": {
-      const invoice = event.data.object as any;
+      const invoice = event.data.object as StripeSDK.Invoice;
+      await ctx.runMutation(component.private.handleInvoiceCreated, {
+        stripeInvoiceId: invoice.id,
+        stripeCustomerId: invoice.customer as string,
+        stripeSubscriptionId: (invoice as any).subscription as
+          | string
+          | undefined,
+        status: invoice.status || "paid",
+        amountDue: invoice.amount_due,
+        amountPaid: invoice.amount_paid,
+        created: invoice.created,
+        metadata: invoice.metadata || {},
+      });
       await ctx.runMutation(component.private.handleInvoicePaid, {
         stripeInvoiceId: invoice.id,
         amountPaid: invoice.amount_paid,
@@ -627,6 +683,18 @@ async function processEvent(
 
     case "invoice.payment_failed": {
       const invoice = event.data.object as StripeSDK.Invoice;
+      await ctx.runMutation(component.private.handleInvoiceCreated, {
+        stripeInvoiceId: invoice.id,
+        stripeCustomerId: invoice.customer as string,
+        stripeSubscriptionId: (invoice as any).subscription as
+          | string
+          | undefined,
+        status: invoice.status || "open",
+        amountDue: invoice.amount_due,
+        amountPaid: invoice.amount_paid,
+        created: invoice.created,
+        metadata: invoice.metadata || {},
+      });
       await ctx.runMutation(component.private.handleInvoicePaymentFailed, {
         stripeInvoiceId: invoice.id,
       });
