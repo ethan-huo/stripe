@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- Update dependencies (convex 1.41.0, stripe ^22.2.2, react 19.2.7, vite 8.0.16,
+  vitest 4.1.9, typescript-eslint, eslint, and others)
+- Bump `react` peer dependency to `^19.2.7` (drops React 18 support)
+
 ## 0.1.5
 
 - Switch the fork to source-only GitHub dependency distribution
