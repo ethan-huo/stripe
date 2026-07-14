@@ -5,6 +5,8 @@
 A Convex component for integrating Stripe payments, subscriptions, and billing
 into your Convex application.
 
+> **Deprecated:** This archived fork is no longer maintained; use the [upstream package](https://github.com/get-convex/stripe) instead.
+
 ## Features
 
 - 🛒 **Checkout Sessions** - Create one-time payment and subscription checkouts

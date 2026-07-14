@@ -77,7 +77,7 @@
     "vitest": "4.1.9"
   },
   "dependencies": {
-    "stripe": "^22.2.2"
+    "stripe": "^22.3.1"
   },
   "trustedDependencies": [
     "@clerk/shared",
